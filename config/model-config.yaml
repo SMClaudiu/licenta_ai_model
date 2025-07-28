@@ -1,0 +1,43 @@
+model:
+  name: "task_feedback_model"
+  version: "1.0.0"
+
+  # Model architectures
+  transformer:
+    model_name: "bert-base-uncased"
+    max_length: 512
+    hidden_size: 768
+    num_attention_heads: 12
+
+  gnn: #graph neural network
+    hidden_channels: 64
+    num_layers: 3
+    dropout: 0.1
+
+  lstm: #long short term memory
+    hidden_size: 128
+    num_layers: 2
+    dropout: 0.2
+
+  # Training parameters
+  training:
+    batch_size: 32
+    learning_rate: 0.0001
+    epochs: 50
+    early_stopping_patience: 10
+    validation_split: 0.2
+
+  # Feature engineering
+  features:
+    text_features:
+      - "description_complexity"
+      - "priority_keywords"
+      - "task_type_classification"
+    temporal_features:
+      - "time_allocation_ratio"
+      - "deadline_pressure"
+      - "creation_to_start_delay"
+    behavioral_features:
+      - "completion_pattern"
+      - "collaboration_index"
+      - "revision_frequency"

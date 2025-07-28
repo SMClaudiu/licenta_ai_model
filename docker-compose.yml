@@ -1,0 +1,16 @@
+services:
+  ai-model:
+    build: .
+    ports:
+      - "5001:5000"
+    environment:
+      - DB_HOST=postgres
+      - DB_NAME=licenta_db
+      - DB_USER=postgres
+      - DB_PASSWORD=101102
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    external: true

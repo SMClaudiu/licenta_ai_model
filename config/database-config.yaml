@@ -1,0 +1,33 @@
+# config/database_config.yaml
+database:
+  primary:
+    host: ${DB_HOST:localhost}
+    port: ${DB_PORT:5432}
+    name: ${DB_NAME:licenta_db}
+    user: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:101102}
+    pool_size: 10
+    max_overflow: 20
+
+  analytics:
+    host: ${ANALYTICS_DB_HOST:localhost}
+    port: ${ANALYTICS_DB_PORT:5432}
+    name: ${ANALYTICS_DB_NAME:licenta_db}
+    user: ${ANALYTICS_DB_USER:postgres}
+    password: ${ANALYTICS_DB_PASSWORD:101102}
+
+  redis:
+    host: ${REDIS_HOST:localhost}
+    port: ${REDIS_PORT:6379}
+    db: 0
+    password: ${REDIS_PASSWORD:}
+
+  # Data pipeline settings
+  pipeline:
+    batch_size: 1000
+    sync_interval: 300  # seconds
+    retention_days: 365
+
+  export:
+    csv_path: "data/exports/"
+    batch_size: 1000
