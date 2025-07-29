@@ -1,15 +1,42 @@
 services:
   ai-model:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: licenta-ai-model
+    restart: unless-stopped
     ports:
       - "5001:5000"
     environment:
-      - DB_HOST=postgres
+      - DB_HOST=licenta-db
       - DB_NAME=licenta_db
       - DB_USER=postgres
       - DB_PASSWORD=101102
+      - PYTHONUNBUFFERED=1
+      - CUDA_VISIBLE_DEVICES=0
+    volumes:
+      - .:/app
+      - model-data:/app/models
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     networks:
       - app-network
+
+volumes:
+  model-data:
 
 networks:
   app-network:
