@@ -4,7 +4,6 @@ import bcrypt
 from faker import Faker
 from datetime import datetime, timedelta
 
-# --- CONFIGURARE ---
 DB_CONFIG = {
     "dbname": "licenta_db",
     "user": "postgres",
@@ -13,15 +12,13 @@ DB_CONFIG = {
     "port": "5432"
 }
 
-# Constante pentru generare
 NUM_CLIENTS = 200
 NUM_TASKS = 5000
 
-# Initializare Faker pentru date false
 fake = Faker()
 
-# --- NOU: DEFINIREA DOMENIILOR CORPORATE ---
-# Aceasta structura defineste "ce" se face in fiecare departament.
+#DEFINIREA DOMENIILOR CORPORATE ---
+#Aceasta structura defineste "ce" se face in fiecare departament.
 CORPORATE_DOMAINS = {
     "it_dev": {
         "board_names": ["Backend Refactor Sprint", "API Gateway Migration", "Q3 Security Audit", "Production Hotfixes",
@@ -55,7 +52,6 @@ CORPORATE_DOMAINS = {
     }
 }
 
-# --- DEFINIREA ARHETIPURILOR (Nivel de experienta) ---
 # Aceasta structura defineste "cum" lucreaza un utilizator.
 USER_PROFILES = {
     "beginner": {
@@ -93,14 +89,13 @@ USER_PROFILES = {
 
 
 def get_weighted_profile_name():
-    """Alege un profil de experienta pe baza distributiei de probabilitate."""
+
     profiles = list(USER_PROFILES.keys())
     weights = [USER_PROFILES[p]['weight'] for p in profiles]
     return random.choices(profiles, weights, k=1)[0]
 
 
 def generate_data():
-    """Functia principala care genereaza si insereaza datele."""
     conn = None
     try:
         conn = psycopg2.connect(**DB_CONFIG)
@@ -114,7 +109,6 @@ def generate_data():
         clients_data = []
         boards_data = []
 
-        # --- 1. GENERARE CLIENTI cu PROFIL si DOMENIU ---
         print(f"Generare {NUM_CLIENTS} clienti...")
         for _ in range(NUM_CLIENTS):
             profile_name = get_weighted_profile_name()
@@ -133,11 +127,10 @@ def generate_data():
             client_id = cur.fetchone()[0]
             clients_data.append({"client_id": client_id, "profile": profile_name, "domain": domain_name})
 
-        # --- 2 & 3. GENERARE DASHBOARDS & BOARDS pe baza domeniului ---
         print("Generare dashboards si boards...")
         for client in clients_data:
             profile = USER_PROFILES[client["profile"]]
-            domain_data = CORPORATE_DOMAINS[client["domain"]]  # Obtine datele specifice domeniului
+            domain_data = CORPORATE_DOMAINS[client["domain"]]
 
             num_dashboards = random.randint(*profile["dashboards_per_client"])
             for _ in range(num_dashboards):
@@ -160,7 +153,6 @@ def generate_data():
                     # Stocam si domeniul pentru a-l folosi la generarea task-urilor
                     boards_data.append({"board_id": board_id, "profile": client["profile"], "domain": client["domain"]})
 
-        # --- 4. GENERARE TASKS pe baza PROFILULUI si DOMENIULUI ---
         print(f"Generare {NUM_TASKS} task-uri...")
         for i in range(NUM_TASKS):
             board_info = random.choice(boards_data)
@@ -172,7 +164,6 @@ def generate_data():
             profile = USER_PROFILES[profile_name]
             domain_data = CORPORATE_DOMAINS[domain_name]
 
-            # Combina prefixul din profil cu jargonul din domeniu pentru un nume de task realist
             task_prefix = random.choice(profile['task_name_prefix'])
             task_jargon = random.choice(domain_data['task_jargon'])
 
@@ -190,13 +181,11 @@ def generate_data():
 
             creation_date = datetime.now() - timedelta(days=random.randint(1, 365), hours=random.randint(0, 23))
 
-            # Generare termen limita
             days_to_complete = random.randint(1, 30)
             if random.random() < profile["urgent_chance"]:
                 days_to_complete = random.randint(1, 3)
             due_date = creation_date + timedelta(days=days_to_complete)
 
-            # Simulare status "overdue"
             if status != 2 and random.random() < profile["overdue_chance"]:
                 due_date = datetime.now() - timedelta(days=random.randint(1, 10))
 

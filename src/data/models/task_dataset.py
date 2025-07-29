@@ -17,8 +17,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 
-class EnhancedTaskDataProcessor:
-    """Enhanced data processor with better feature engineering"""
+class TaskDataProcessor:
 
     def __init__(self, db_config):
         self.db_config = db_config
@@ -30,7 +29,6 @@ class EnhancedTaskDataProcessor:
         self.original_feature_names = []
 
     def connect_to_db(self):
-        """Create database connection"""
         try:
             connection_string = f"postgresql://{self.db_config['user']}:{self.db_config['password']}@{self.db_config['host']}:{self.db_config['port']}/{self.db_config['database']}"
             self.engine = create_engine(connection_string)
@@ -41,7 +39,6 @@ class EnhancedTaskDataProcessor:
             return False
 
     def extract_data(self):
-        """Enhanced data extraction with more features"""
         query = """
                 SELECT t.task_id, \
                        t.creation_date, \
@@ -79,7 +76,6 @@ class EnhancedTaskDataProcessor:
             df = pd.read_sql_query(query, self.engine)
             print(f"Extracted {len(df)} records from database")
 
-            # Remove extreme outliers (tasks longer than 1 year)
             df = df[df['days_to_complete'] <= 365]
             print(f"After filtering outliers: {len(df)} records")
 
@@ -89,21 +85,19 @@ class EnhancedTaskDataProcessor:
             return None
 
     def engineer_advanced_features(self, df):
-        """Enhanced feature engineering with more sophisticated features"""
 
-        # Convert datetime columns
         df['creation_date'] = pd.to_datetime(df['creation_date'])
         df['due_date'] = pd.to_datetime(df['due_date'])
         current_time = datetime.now()
 
-        # === TIME-BASED FEATURES ===
+        #Time based features
         df['is_overdue'] = (df['due_date'] < current_time).astype(int)
         df['is_weekend_created'] = df['creation_day_of_week'].isin([0, 6]).astype(int)
         df['is_business_hours'] = ((df['creation_hour'] >= 9) & (df['creation_hour'] <= 17)).astype(int)
         df['is_urgent'] = (df['days_to_complete'] <= 3).astype(int)
         df['is_long_term'] = (df['days_to_complete'] > 30).astype(int)
 
-        # Cyclical encoding for time features
+        #Cyclical encoding for time features
         df['creation_hour_sin'] = np.sin(2 * np.pi * df['creation_hour'] / 24)
         df['creation_hour_cos'] = np.cos(2 * np.pi * df['creation_hour'] / 24)
         df['creation_day_sin'] = np.sin(2 * np.pi * df['creation_day_of_week'] / 7)
@@ -111,12 +105,11 @@ class EnhancedTaskDataProcessor:
         df['creation_month_sin'] = np.sin(2 * np.pi * df['creation_month'] / 12)
         df['creation_month_cos'] = np.cos(2 * np.pi * df['creation_month'] / 12)
 
-        # === TEXT-BASED FEATURES ===
+        #Text based features
         df['has_long_description'] = (df['description_length'] > df['description_length'].quantile(0.75)).astype(int)
         df['has_short_description'] = (df['description_length'] < df['description_length'].quantile(0.25)).astype(int)
         df['has_long_task_name'] = (df['task_name_length'] > df['task_name_length'].quantile(0.75)).astype(int)
 
-        # Priority and urgency keywords
         priority_keywords = ['urgent', 'asap', 'priority', 'critical', 'important', 'emergency', 'immediate']
         completion_keywords = ['review', 'check', 'verify', 'approve', 'sign', 'confirm']
         technical_keywords = ['bug', 'fix', 'error', 'debug', 'test', 'deploy', 'update']
@@ -131,41 +124,36 @@ class EnhancedTaskDataProcessor:
             '|'.join(technical_keywords), na=False
         ).astype(int)
 
-        # === WORKLOAD AND PERFORMANCE FEATURES ===
-        # Client performance metrics
+        #Client performance metrics
         df['client_completion_rate'] = df['client_completed_tasks'] / df['client_total_tasks']
         df['client_pending_rate'] = df['client_pending_tasks'] / df['client_total_tasks']
         df['client_productivity_score'] = df['client_completed_tasks'] / (df['client_avg_task_duration'] + 1)
 
-        # Board performance metrics
+        #Board performance metrics
         df['board_completion_rate'] = df['board_completed_tasks'] / df['board_total_tasks']
         df['board_efficiency_score'] = df['board_completed_tasks'] / (df['board_avg_task_duration'] + 1)
 
-        # Relative complexity scores
+        #Relative complexity scores
         df['task_complexity_vs_client_avg'] = df['days_to_complete'] / (df['client_avg_task_duration'] + 1)
         df['task_complexity_vs_board_avg'] = df['days_to_complete'] / (df['board_avg_task_duration'] + 1)
 
-        # === CATEGORICAL ENCODINGS ===
-        # Enhanced categorical encoding with frequency
+        #Categorical encoding with frequency
         categorical_columns = ['board_name', 'client_name', 'email']
         for col in categorical_columns:
-            # Label encoding
             le = LabelEncoder()
             df[f'{col}_encoded'] = le.fit_transform(df[col].astype(str))
             self.label_encoders[col] = le
 
-            # Frequency encoding
             freq_map = df[col].value_counts().to_dict()
             df[f'{col}_frequency'] = df[col].map(freq_map)
 
-        # === INTERACTION FEATURES ===
-        # Create interaction features between important variables
+        #Create interaction features between important variables
         df['urgency_x_complexity'] = df['is_urgent'] * df['days_to_complete']
         df['client_performance_x_task_complexity'] = df['client_completion_rate'] * df['days_to_complete']
         df['board_efficiency_x_urgency'] = df['board_efficiency_score'] * df['is_urgent']
         df['weekend_x_urgency'] = df['is_weekend_created'] * df['is_urgent']
 
-        # === DERIVED TIME FEATURES ===
+        #Time features - derived
         df['days_since_creation'] = (current_time - df['creation_date']).dt.days
         df['days_until_due'] = (df['due_date'] - current_time).dt.days
         df['time_pressure'] = np.where(df['days_until_due'] > 0,
@@ -175,10 +163,9 @@ class EnhancedTaskDataProcessor:
         return df
 
     def select_best_features(self, X, y, task_type='classification', k=20):
-        """Select the best features using statistical tests"""
 
         if task_type == 'classification':
-            # Use mutual information for classification
+            #Use mutual information for classification
             selector = SelectKBest(score_func=mutual_info_classif, k=k)
         else:
             # Use F-statistic for regression
@@ -186,7 +173,7 @@ class EnhancedTaskDataProcessor:
 
         X_selected = selector.fit_transform(X, y)
 
-        # Get selected feature indices
+        #Get selected feature indices
         selected_indices = selector.get_support(indices=True)
         selected_features = [self.original_feature_names[i] for i in selected_indices]
 
@@ -200,9 +187,8 @@ class EnhancedTaskDataProcessor:
         return X_selected
 
     def prepare_classification_data(self, df):
-        """Enhanced classification data preparation"""
 
-        # Define all possible features
+        #Define possible features
         feature_columns = [
             'days_to_complete', 'creation_day_of_week', 'creation_hour', 'creation_month', 'creation_quarter',
             'description_length', 'task_name_length', 'client_total_tasks', 'client_completed_tasks',
@@ -218,12 +204,12 @@ class EnhancedTaskDataProcessor:
             'board_efficiency_x_urgency', 'weekend_x_urgency', 'days_since_creation', 'days_until_due', 'time_pressure'
         ]
 
-        # Filter only existing columns and handle missing values
+        #Filter only existing columns and handle missing values
         available_features = [col for col in feature_columns if col in df.columns]
         X = df[available_features].fillna(0).values
         self.original_feature_names = available_features
 
-        # Encode status labels
+        #Encode status labels
         le_status = LabelEncoder()
         y = le_status.fit_transform(df['status'])
         self.label_encoders['status'] = le_status
@@ -234,9 +220,8 @@ class EnhancedTaskDataProcessor:
         return X_selected, y
 
     def prepare_regression_data(self, df):
-        """Enhanced regression data preparation"""
 
-        # Same feature engineering as classification
+        #Same possible features
         feature_columns = [
             'creation_day_of_week', 'creation_hour', 'creation_month', 'creation_quarter',
             'description_length', 'task_name_length', 'client_total_tasks', 'client_completed_tasks',
@@ -252,33 +237,31 @@ class EnhancedTaskDataProcessor:
         ]
 
         available_features = [col for col in feature_columns if col in df.columns]
-        X = df[available_features].fillna(0).values
+        x = df[available_features].fillna(0).values
         self.original_feature_names = available_features
 
-        # Target variable with outlier handling
+        #Target variable with outlier handling
         y = df['days_to_complete'].fillna(df['days_to_complete'].median()).values
 
-        # Remove extreme outliers using IQR method
-        Q1 = np.percentile(y, 25)
-        Q3 = np.percentile(y, 75)
-        IQR = Q3 - Q1
-        lower_bound = Q1 - 1.5 * IQR
-        upper_bound = Q3 + 1.5 * IQR
+        #Remove extreme outliers using IQR(interquartile range)
+        q1 = np.percentile(y, 25)
+        q2 = np.percentile(y, 75)
+        IQR = q2 - q1
+        lower_bound = q1 - 1.5 * IQR
+        upper_bound = q2 + 1.5 * IQR
 
-        # Keep only samples within bounds
+        #Keep only samples within bounds
         mask = (y >= lower_bound) & (y <= upper_bound)
-        X = X[mask]
+        x = x[mask]
         y = y[mask]
 
         print(f"Removed {(~mask).sum()} outliers from regression data")
 
-        # Feature selection
-        X_selected = self.select_best_features(X, y, 'regression', k=min(25, len(available_features)))
+        x_selected = self.select_best_features(x, y, 'regression', k=min(25, len(available_features)))
 
-        return X_selected, y
+        return x_selected, y
 
     def get_processed_data(self, task_type='classification'):
-        """Get fully processed data with enhanced features"""
         if not self.connect_to_db():
             return None
 
@@ -289,17 +272,16 @@ class EnhancedTaskDataProcessor:
         df = self.engineer_advanced_features(df)
 
         if task_type == 'classification':
-            X, y = self.prepare_classification_data(df)
+            x, y = self.prepare_classification_data(df)
         else:
-            X, y = self.prepare_regression_data(df)
+            x, y = self.prepare_regression_data(df)
 
-        # Scale features using RobustScaler (better for outliers)
-        X_scaled = self.scaler.fit_transform(X)
+        #Scale features using RobustScaler (better for outliers)
+        x_scaled = self.scaler.fit_transform(x)
 
-        return X_scaled, y
+        return x_scaled, y
 
     def create_balanced_sampler(self, y):
-        """Create a weighted sampler for balanced training"""
         class_counts = np.bincount(y)
         class_weights = 1.0 / class_counts
         sample_weights = class_weights[y]
@@ -311,7 +293,6 @@ class EnhancedTaskDataProcessor:
         )
 
     def save_preprocessors(self, filepath='enhanced_preprocessors.pkl'):
-        """Save all preprocessing components"""
         preprocessors = {
             'label_encoders': self.label_encoders,
             'scaler': self.scaler,
@@ -324,7 +305,6 @@ class EnhancedTaskDataProcessor:
         print(f"Enhanced preprocessors saved to {filepath}")
 
     def load_preprocessors(self, filepath='enhanced_preprocessors.pkl'):
-        """Load saved preprocessors"""
         with open(filepath, 'rb') as f:
             preprocessors = pickle.load(f)
         self.label_encoders = preprocessors['label_encoders']
@@ -335,56 +315,52 @@ class EnhancedTaskDataProcessor:
         print(f"Enhanced preprocessors loaded from {filepath}")
 
 
-class EnhancedTaskDatasetFactory:
-    """Enhanced factory with better data handling"""
+class TaskDatasetFactory:
 
     def __init__(self, data_processor):
         self.data_processor = data_processor
 
     def create_classification_datasets(self, test_size=0.2, val_size=0.1, batch_size=64, use_stratification=True):
         """Create enhanced classification datasets with better sampling"""
-        X, y = self.data_processor.get_processed_data('classification')
-        if X is None:
+        x, y = self.data_processor.get_processed_data('classification')
+        if x is None:
             return None
 
-        return self._create_enhanced_datasets(X, y, test_size, val_size, batch_size, 'classification',
+        return self._create_enhanced_datasets(Xx, y, test_size, val_size, batch_size, 'classification',
                                               use_stratification)
 
     def create_regression_datasets(self, test_size=0.2, val_size=0.1, batch_size=64):
-        """Create enhanced regression datasets"""
-        X, y = self.data_processor.get_processed_data('regression')
+        x, y = self.data_processor.get_processed_data('regression')
         if X is None:
             return None
 
-        return self._create_enhanced_datasets(X, y, test_size, val_size, batch_size, 'regression', False)
+        return self._create_enhanced_datasets(x, y, test_size, val_size, batch_size, 'regression', False)
 
-    def _create_enhanced_datasets(self, X, y, test_size, val_size, batch_size, task_type, use_stratification):
-        """Internal method with enhanced dataset creation"""
+    def _create_enhanced_datasets(self, x, y, test_size, val_size, batch_size, task_type, use_stratification):
 
-        # Enhanced data splitting
         if task_type == 'classification' and use_stratification:
-            # Use stratified split for classification
-            X_temp, X_test, y_temp, y_test = train_test_split(
-                X, y, test_size=test_size, random_state=42, stratify=y
+            #Use stratified split for classification
+            x_temp, x_test, y_temp, y_test = train_test_split(
+                x, y, test_size=test_size, random_state=42, stratify=y
             )
-            X_train, X_val, y_train, y_val = train_test_split(
-                X_temp, y_temp, test_size=val_size / (1 - test_size), random_state=42, stratify=y_temp
+            x_train, x_val, y_train, y_val = train_test_split(
+                x_temp, y_temp, test_size=val_size / (1 - test_size), random_state=42, stratify=y_temp
             )
         else:
             # Regular split for regression
-            X_temp, X_test, y_temp, y_test = train_test_split(
-                X, y, test_size=test_size, random_state=42
+            x_temp, x_test, y_temp, y_test = train_test_split(
+                x, y, test_size=test_size, random_state=42
             )
-            X_train, X_val, y_train, y_val = train_test_split(
-                X_temp, y_temp, test_size=val_size / (1 - test_size), random_state=42
+            x_train, x_val, y_train, y_val = train_test_split(
+                x_temp, y_temp, test_size=val_size / (1 - test_size), random_state=42
             )
 
-        # Create PyTorch datasets
-        train_dataset = TaskDataset(X_train, y_train)
-        val_dataset = TaskDataset(X_val, y_val)
-        test_dataset = TaskDataset(X_test, y_test)
+        #Create PyTorch datasets
+        train_dataset = TaskDataset(x_train, y_train)
+        val_dataset = TaskDataset(x_val, y_val)
+        test_dataset = TaskDataset(x_test, y_test)
 
-        # Enhanced DataLoaders
+        #DataLoaders
         if task_type == 'classification':
             # Use balanced sampling for training
             sampler = self.data_processor.create_balanced_sampler(y_train)
@@ -400,7 +376,7 @@ class EnhancedTaskDatasetFactory:
         print(f"Train: {len(train_dataset)} samples")
         print(f"Validation: {len(val_dataset)} samples")
         print(f"Test: {len(test_dataset)} samples")
-        print(f"Selected features: {X_train.shape[1]}")
+        print(f"Selected features: {x_train.shape[1]}")
 
         if task_type == 'classification':
             unique, counts = np.unique(y_train, return_counts=True)
@@ -413,7 +389,7 @@ class EnhancedTaskDatasetFactory:
             'val_loader': val_loader,
             'test_loader': test_loader,
             'feature_names': self.data_processor.feature_names,
-            'num_features': X_train.shape[1],
+            'num_features': x_train.shape[1],
             'num_classes': len(np.unique(y)) if task_type == 'classification' else 1,
             'task_type': task_type,
             'class_distribution': dict(
@@ -422,7 +398,6 @@ class EnhancedTaskDatasetFactory:
 
 
 class TaskDataset(Dataset):
-    """Enhanced PyTorch Dataset with data augmentation options"""
 
     def __init__(self, features, targets=None, transform=None, add_noise=False, noise_factor=0.01):
         self.features = torch.FloatTensor(features)
