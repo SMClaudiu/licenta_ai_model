@@ -326,12 +326,12 @@ class TaskDatasetFactory:
         if x is None:
             return None
 
-        return self._create_enhanced_datasets(Xx, y, test_size, val_size, batch_size, 'classification',
+        return self._create_enhanced_datasets(x, y, test_size, val_size, batch_size, 'classification',
                                               use_stratification)
 
     def create_regression_datasets(self, test_size=0.2, val_size=0.1, batch_size=64):
         x, y = self.data_processor.get_processed_data('regression')
-        if X is None:
+        if x is None:
             return None
 
         return self._create_enhanced_datasets(x, y, test_size, val_size, batch_size, 'regression', False)
