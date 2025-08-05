@@ -1,11 +1,10 @@
-# data_generator.py (MODIFICAT COMPLET)
+# data_generator.py (Varianta Finală, Îmbunătățită)
 
 import psycopg2
 import random
 from faker import Faker
 from datetime import datetime, timedelta
 
-# Nicio modificare a constantelor, acestea rămân la fel.
 DB_CONFIG = {
     "dbname": "licenta_db", "user": "postgres", "password": "101102",
     "host": "localhost", "port": "5432"
@@ -13,70 +12,54 @@ DB_CONFIG = {
 NUM_CLIENTS = 200
 NUM_TASKS = 6000  # 33% per status
 fake = Faker()
+
 CORPORATE_DOMAINS = {
     "it_dev": {
         "board_names": ["Backend Refactor Sprint", "API Gateway Migration", "Q3 Security Audit", "Production Hotfixes",
                         "UI/UX Overhaul"],
         "task_jargon": ["deploy to Staging", "fix bug #", "code review PR #", "optimize DB query for ",
-                        "investigate latency in ", "refactor service "],
-        "average_duration_range": (1, 14)
-    },
-    "marketing": {
-        "board_names": ["Q4 Social Media Campaign", "New Product Launch", "Content Calendar - Blog",
-                        "SEO & SEM Strategy", "Brand Awareness Initiative"],
-        "task_jargon": ["draft press release for ", "analyze campaign results of ", "create new ad copy for ",
-                        "schedule social media posts for ", "A/B test landing page ", "update content brief for "],
-        "average_duration_range": (3, 21)
-    },
-    "sales": {
-        "board_names": ["Q3 Lead Pipeline", "Key Account - Acme Corp", "Cold Outreach Strategy",
-                        "Sales Team Weekly Sync", "New Market Expansion"],
-        "task_jargon": ["follow up with client ", "prepare demo for prospect ", "update CRM with notes for ",
-                        "log call with ", "research potential leads in ", "finalize contract for "],
-        "average_duration_range": (1, 7)
-    },
-    "hr": {
-        "board_names": ["New Hire Onboarding", "Performance Review Cycle", "Company Culture Initiative",
-                        "Recruitment - Senior Dev", "Benefits Package Review"],
-        "task_jargon": ["schedule interview for ", "process payroll changes for ", "prepare benefits package for ",
-                        "draft new company policy on ", "conduct exit interview with ",
-                        "organize team building event "],
-        "average_duration_range": (2, 14)
-    },
+                        "investigate latency in ", "refactor service "], "average_duration_range": (1, 14)},
+    "marketing": {"board_names": ["Q4 Social Media Campaign", "New Product Launch", "Content Calendar - Blog",
+                                  "SEO & SEM Strategy", "Brand Awareness Initiative"],
+                  "task_jargon": ["draft press release for ", "analyze campaign results of ", "create new ad copy for ",
+                                  "schedule social media posts for ", "A/B test landing page ",
+                                  "update content brief for "], "average_duration_range": (3, 21)},
+    "sales": {"board_names": ["Q3 Lead Pipeline", "Key Account - Acme Corp", "Cold Outreach Strategy",
+                              "Sales Team Weekly Sync", "New Market Expansion"],
+              "task_jargon": ["follow up with client ", "prepare demo for prospect ", "update CRM with notes for ",
+                              "log call with ", "research potential leads in ", "finalize contract for "],
+              "average_duration_range": (1, 7)},
+    "hr": {"board_names": ["New Hire Onboarding", "Performance Review Cycle", "Company Culture Initiative",
+                           "Recruitment - Senior Dev", "Benefits Package Review"],
+           "task_jargon": ["schedule interview for ", "process payroll changes for ", "prepare benefits package for ",
+                           "draft new company policy on ", "conduct exit interview with ",
+                           "organize team building event "], "average_duration_range": (2, 14)},
     "finance": {
         "board_names": ["End-of-Month Closing", "Budget Planning 2024", "Expense Report Approvals", "Annual Audit Prep",
                         "Investor Relations Deck"],
         "task_jargon": ["reconcile accounts for ", "process invoice #", "generate P&L report for ",
                         "approve expense report for ", "analyze financial variance for ", "forecast cash flow for "],
-        "average_duration_range": (1, 10)
-    }
+        "average_duration_range": (1, 10)}
 }
+
 USER_PROFILES = {
-    "beginner": {
-        "weight": 35, "dashboards_per_client": (1, 1), "boards_per_dashboard": (1, 2),
-        "task_name_prefix": ["Do", "Check", "Buy", "Call"], "description_length": (5, 50),
-        "work_behavior": {
-            "multitasking_tendency": 0.2, "procrastination_tendency": 0.4, "weekend_work_probability": 0.05,
-            "overtime_probability": 0.1, "task_completion_consistency": 0.4
-        }
-    },
-    "medium": {
-        "weight": 50, "dashboards_per_client": (1, 3), "boards_per_dashboard": (2, 5),
-        "task_name_prefix": ["Review", "Draft", "Implement", "Prepare", "Finalize"], "description_length": (50, 250),
-        "work_behavior": {
-            "multitasking_tendency": 0.6, "procrastination_tendency": 0.2, "weekend_work_probability": 0.15,
-            "overtime_probability": 0.3, "task_completion_consistency": 0.7
-        }
-    },
-    "advanced": {
-        "weight": 15, "dashboards_per_client": (3, 7), "boards_per_dashboard": (5, 10),
-        "task_name_prefix": ["URGENT: Fix", "BLOCKER:", "CRITICAL: Deploy", "Investigate", "Optimize"],
-        "description_length": (250, 1000),
-        "work_behavior": {
-            "multitasking_tendency": 0.9, "procrastination_tendency": 0.05, "weekend_work_probability": 0.4,
-            "overtime_probability": 0.6, "task_completion_consistency": 0.9
-        }
-    }
+    "beginner": {"weight": 35, "dashboards_per_client": (1, 1), "boards_per_dashboard": (1, 2),
+                 "task_name_prefix": ["Do", "Check", "Buy", "Call"], "description_length": (5, 50),
+                 "work_behavior": {"multitasking_tendency": 0.2, "procrastination_tendency": 0.4,
+                                   "weekend_work_probability": 0.05, "overtime_probability": 0.1,
+                                   "task_completion_consistency": 0.6}},
+    "medium": {"weight": 50, "dashboards_per_client": (1, 3), "boards_per_dashboard": (2, 5),
+               "task_name_prefix": ["Review", "Draft", "Implement", "Prepare", "Finalize"],
+               "description_length": (50, 250),
+               "work_behavior": {"multitasking_tendency": 0.6, "procrastination_tendency": 0.2,
+                                 "weekend_work_probability": 0.15, "overtime_probability": 0.3,
+                                 "task_completion_consistency": 0.8}},
+    "advanced": {"weight": 15, "dashboards_per_client": (3, 7), "boards_per_dashboard": (5, 10),
+                 "task_name_prefix": ["URGENT: Fix", "BLOCKER:", "CRITICAL: Deploy", "Investigate", "Optimize"],
+                 "description_length": (250, 1000),
+                 "work_behavior": {"multitasking_tendency": 0.9, "procrastination_tendency": 0.05,
+                                   "weekend_work_probability": 0.4, "overtime_probability": 0.6,
+                                   "task_completion_consistency": 0.95}}
 }
 
 
@@ -87,34 +70,41 @@ def get_weighted_profile_name():
 
 
 def generate_realistic_dates_for_status(target_status, behavior, avg_duration_range):
-    """
-    Genereaza date care corespund logic unui status țintă.
-    """
+
     consistency = behavior['task_completion_consistency']
     procrastination = behavior['procrastination_tendency']
+    multitasking = behavior['multitasking_tendency']
     current_time = datetime.now()
 
     min_duration, max_duration = avg_duration_range
     base_duration_days = random.uniform(min_duration, max_duration)
+
+    # Durata mai ridicata in relatie cu consecventa scazuta
     effective_duration_days = base_duration_days * (1 + (1 - consistency) * 0.5)
 
     if target_status == 0:  # Pending
+        # Procrastinarea micsoreaza sansa ca un task abia primit sa fie inceput
         percentage_passed = random.uniform(0.01, 0.3) * (1 + procrastination)
-        percentage_passed = min(percentage_passed, 0.4)
+        percentage_passed = min(percentage_passed, 0.4)  # Plafonăm pentru a crea o graniță clară
+
         days_since_creation = effective_duration_days * percentage_passed
         creation_date = current_time - timedelta(days=days_since_creation)
         due_date = creation_date + timedelta(days=effective_duration_days)
 
     elif target_status == 1:  # In Progress
-        multitasking_factor = behavior['multitasking_tendency'] * 0.2
-        percentage_passed = random.uniform(0.3 - multitasking_factor, 0.8 - multitasking_factor)
+        # Multitaskingul mareste durata celor "In Progress"
+        multitasking_factor = multitasking * 0.2
+        percentage_passed = random.uniform(0.4, 0.8)  # Graniță clară față de "Pending"
+
         days_since_creation = effective_duration_days * percentage_passed
         creation_date = current_time - timedelta(days=days_since_creation)
         due_date = creation_date + timedelta(days=effective_duration_days)
 
     else:  # Completed
+        # Pentru "Completed", task-ul este aproape gata sau terminat cu întârziere.
         is_completed_late = random.random() > consistency
         percentage_passed = random.uniform(1.05, 1.3) if is_completed_late else random.uniform(0.8, 1.0)
+
         days_since_creation = effective_duration_days * percentage_passed
         creation_date = current_time - timedelta(days=days_since_creation)
         due_date = creation_date + timedelta(days=effective_duration_days)
@@ -123,7 +113,7 @@ def generate_realistic_dates_for_status(target_status, behavior, avg_duration_ra
 
 def generate_data():
     conn = None
-    status_counts = {0: 0, 1: 0, 2: 0}  # Contor pentru a verifica echilibrul
+    status_counts = {0: 0, 1: 0, 2: 0}
     try:
         conn = psycopg2.connect(**DB_CONFIG)
         cur = conn.cursor()
@@ -143,8 +133,7 @@ def generate_data():
             password = fake.password()
             cur.execute(
                 "INSERT INTO client (email, name, password, phone_number) VALUES (%s, %s, %s, %s) RETURNING client_id;",
-                (fake.email(), fake.name(), password, fake.phone_number())
-            )
+                (fake.email(), fake.name(), password, fake.phone_number()))
             client_id = cur.fetchone()[0]
             clients_data.append({"client_id": client_id, "profile": profile_name, "domain": domain_name})
 
@@ -155,25 +144,21 @@ def generate_data():
             num_dashboards = random.randint(*profile["dashboards_per_client"])
             for _ in range(num_dashboards):
                 dashboard_name = f"{random.choice(domain_data['board_names'])} Dashboard"
-                cur.execute(
-                    "INSERT INTO dashboard (name, client_id) VALUES (%s, %s) RETURNING id;",
-                    (dashboard_name, client["client_id"])
-                )
+                cur.execute("INSERT INTO dashboard (name, client_id) VALUES (%s, %s) RETURNING id;",
+                            (dashboard_name, client["client_id"]))
                 dashboard_id = cur.fetchone()[0]
                 num_boards = random.randint(*profile["boards_per_dashboard"])
                 for _ in range(num_boards):
                     board_name = random.choice(domain_data['board_names'])
-                    cur.execute(
-                        "INSERT INTO board (name, dash_board_id) VALUES (%s, %s) RETURNING board_id;",
-                        (board_name, dashboard_id)
-                    )
+                    cur.execute("INSERT INTO board (name, dash_board_id) VALUES (%s, %s) RETURNING board_id;",
+                                (board_name, dashboard_id))
                     board_id = cur.fetchone()[0]
                     boards_data.append({"board_id": board_id, "profile": client["profile"], "domain": client["domain"]})
 
         print(f"Generare {NUM_TASKS} task-uri echilibrate...")
         for i in range(NUM_TASKS):
-            # MODIFICARE CHEIE: Decidem statusul ÎNAINTE de a genera datele
-            target_status = i % 3  # Asigură o distribuție perfect echilibrată: 0, 1, 2, 0, 1, 2, ...
+            # MODIFICARE CHEIE: Decidem statusul ÎNAINTE de a genera datele pentru a asigura echilibrul
+            target_status = i % 3
 
             board_info = random.choice(boards_data)
             board_id = board_info["board_id"]
@@ -197,7 +182,7 @@ def generate_data():
             )
 
             status = target_status
-            status_counts[status] += 1  # Actualizăm contorul
+            status_counts[status] += 1
 
             cur.execute(
                 "INSERT INTO task (creation_date, description, due_date, name, status, board_id) VALUES (%s, %s, %s, %s, %s, %s);",
