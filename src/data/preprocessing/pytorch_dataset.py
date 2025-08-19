@@ -1,64 +1,48 @@
-"""
-Enhanced Machine Learning Models for Task Management
-Key improvements for better AI performance
-"""
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from sklearn.metrics import accuracy_score, precision_recall_fscore_support, mean_squared_error, r2_score, \
-    mean_absolute_error
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support, mean_squared_error, r2_score, mean_absolute_error
 from sklearn.utils.class_weight import compute_class_weight
-from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim.lr_scheduler import ReduceLROnPlateau, OneCycleLR
 from tqdm import tqdm
-
+import math
 
 class TaskStatusClassifier(nn.Module):
-
-    def __init__(self, input_size, hidden_sizes=[256, 128, 64], num_classes=3, dropout_rate=0.4):
+    def __init__(self, input_size, hidden_sizes=None, num_classes=3, dropout_rate=0.4):
         super(TaskStatusClassifier, self).__init__()
-
+        if hidden_sizes is None:
+            hidden_sizes = [256, 128]
         self.input_size = input_size
         self.num_classes = num_classes
-
-        #Input normalization
         self.input_bn = nn.BatchNorm1d(input_size)
-
-        #Build deeper network with residual connections
-        layers = []
+        self.layers = nn.ModuleList()
         prev_size = input_size
-
         for i, hidden_size in enumerate(hidden_sizes):
-            #Main path
-            layers.append(nn.Linear(prev_size, hidden_size))
-            layers.append(nn.BatchNorm1d(hidden_size))
-            layers.append(nn.ReLU())
-            layers.append(nn.Dropout(dropout_rate))
-
-            #Add residual connection if dimensions match
-            if prev_size == hidden_size and i > 0:
-                self.add_residual = True
-
+            current_dropout = dropout_rate * (1 - i * 0.1)
+            current_dropout = max(current_dropout, 0.1)
+            block = nn.Sequential(
+                nn.Linear(prev_size, hidden_size),
+                nn.BatchNorm1d(hidden_size),
+                nn.ReLU(inplace=True),
+                nn.Dropout(current_dropout)
+            )
+            self.layers.append(block)
+            if prev_size == hidden_size:
+                self.layers.append(ResidualBlock(hidden_size, current_dropout))
             prev_size = hidden_size
-
-        self.feature_layers = nn.Sequential(*layers)
-
-        #Output layers with different dropout
         self.classifier = nn.Sequential(
             nn.Linear(prev_size, prev_size // 2),
             nn.BatchNorm1d(prev_size // 2),
-            nn.ReLU(),
-            nn.Dropout(dropout_rate * 0.5),  # Lower dropout before output
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.2),
             nn.Linear(prev_size // 2, num_classes)
         )
-
-        #Initialize weights
         self._initialize_weights()
 
     def _initialize_weights(self):
-
-        #Initialize weights using Xavier/He initialization
         for m in self.modules():
             if isinstance(m, nn.Linear):
                 nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
@@ -69,58 +53,62 @@ class TaskStatusClassifier(nn.Module):
                 nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
-        # Input normalization
         x = self.input_bn(x)
-
-        # Feature extraction
-        features = self.feature_layers(x)
-
-        # Classification
-        output = self.classifier(features)
-
+        for layer in self.layers:
+            if isinstance(layer, ResidualBlock):
+                x = layer(x) + x
+            else:
+                x = layer(x)
+        output = self.classifier(x)
         return output
 
+class ResidualBlock(nn.Module):
+    def __init__(self, size, dropout_rate):
+        super(ResidualBlock, self).__init__()
+        self.block = nn.Sequential(
+            nn.Linear(size, size),
+            nn.BatchNorm1d(size),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout_rate),
+            nn.Linear(size, size),
+            nn.BatchNorm1d(size)
+        )
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        return self.relu(self.block(x))
 
 class TaskCompletionRegressor(nn.Module):
-
-    def __init__(self, input_size, hidden_sizes=[256, 128, 64], dropout_rate=0.3):
+    def __init__(self, input_size, hidden_sizes=[512, 256, 128], dropout_rate=0.25):
         super(TaskCompletionRegressor, self).__init__()
-
         self.input_size = input_size
-
-        #Input normalization
         self.input_bn = nn.BatchNorm1d(input_size)
-
-        #Build network with skip connections
-        layers = []
+        self.layers = nn.ModuleList()
         prev_size = input_size
-
-        for hidden_size in hidden_sizes:
-            layers.append(nn.Linear(prev_size, hidden_size))
-            layers.append(nn.BatchNorm1d(hidden_size))
-            layers.append(nn.ELU())  # ELU can work better than ReLU for regression
-            layers.append(nn.Dropout(dropout_rate))
+        for i, hidden_size in enumerate(hidden_sizes):
+            current_dropout = dropout_rate * (1 - i * 0.05)
+            current_dropout = max(current_dropout, 0.1)
+            block = nn.Sequential(
+                nn.Linear(prev_size, hidden_size),
+                nn.BatchNorm1d(hidden_size),
+                nn.GELU(),
+                nn.Dropout(current_dropout)
+            )
+            self.layers.append(block)
             prev_size = hidden_size
-
-        self.feature_layers = nn.Sequential(*layers)
-
-        #Output layer with different activation
         self.regressor = nn.Sequential(
             nn.Linear(prev_size, prev_size // 2),
             nn.BatchNorm1d(prev_size // 2),
-            nn.ELU(),
-            nn.Dropout(dropout_rate * 0.5),
-            nn.Linear(prev_size // 2, 1),
-            nn.Softplus()  # Ensures positive output for time prediction
+            nn.GELU(),
+            nn.Dropout(0.1),
+            nn.Linear(prev_size // 2, 1)
         )
-
-        #Initialize weights
         self._initialize_weights()
 
     def _initialize_weights(self):
         for m in self.modules():
             if isinstance(m, nn.Linear):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                nn.init.xavier_normal_(m.weight)
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
             elif isinstance(m, nn.BatchNorm1d):
@@ -128,429 +116,288 @@ class TaskCompletionRegressor(nn.Module):
                 nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
-        #Input normalization
         x = self.input_bn(x)
-
-        #Feature extraction
-        features = self.feature_layers(x)
-
-        #Regression output
-        output = self.regressor(features)
-
+        for layer in self.layers:
+            x = layer(x)
+        output = self.regressor(x)
         return output.squeeze()
 
-
 class TaskModelTrainer:
-
     def __init__(self, model, device='cpu', class_weights=None):
         self.model = model
         self.device = device
         self.class_weights = class_weights
         self.model.to(device)
-        self.train_losses = []
-        self.val_losses = []
-        self.train_metrics = []
-        self.val_metrics = []
-        self.learning_rates = []
+        self.train_losses, self.val_losses, self.train_metrics, self.val_metrics, self.learning_rates = [], [], [], [], []
+        self.best_val_metric = 0.0 if hasattr(model, 'num_classes') else float('inf')
+        self.patience_counter = 0
+        self.training_stopped_early = False
 
-    def train_classification(self, train_loader, val_loader, epochs=150, lr=0.001, weight_decay=1e-4):
-
-        # Calculate class weights if not provided
+    def train_classification(self, train_loader, val_loader, epochs=200, lr=0.001, weight_decay=1e-4):
         if self.class_weights is None:
-            # Extract all targets to compute class weights
-            all_targets = []
-            for _, targets in train_loader:
-                all_targets.extend(targets.numpy())
-
-            class_weights = compute_class_weight(
-                'balanced',
-                classes=np.unique(all_targets),
-                y=all_targets
-            )
+            all_targets = np.concatenate([targets.numpy() for _, targets in train_loader])
+            class_weights = compute_class_weight('balanced', classes=np.unique(all_targets), y=all_targets)
             class_weights = torch.FloatTensor(class_weights).to(self.device)
         else:
             class_weights = torch.FloatTensor(self.class_weights).to(self.device)
-
-        # Use weighted loss
-        criterion = nn.CrossEntropyLoss(weight=class_weights)
-
-        #Optimizer with different learning rates for different layers
-        optimizer = optim.AdamW([
-            {'params': self.model.feature_layers.parameters(), 'lr': lr},
-            {'params': self.model.classifier.parameters(), 'lr': lr * 0.1}  # Lower LR for classifier
-        ], weight_decay=weight_decay)
-
-        #Scheduler
-        scheduler = CosineAnnealingLR(optimizer, T_max=epochs, eta_min=lr * 0.01)
-
-        best_val_acc = 0.0
-        patience_counter = 0
-        early_stop_patience = 30
-
-        #Data augmentation through mixup (optional)
-        mixup_alpha = 0.2
-
-        for epoch in tqdm(range(epochs), desc="Training Classification"):
-            # Training phase
-            self.model.train()
-            train_loss = 0.0
-            train_predictions = []
-            train_targets = []
-
-            for batch_features, batch_targets in train_loader:
-                batch_features = batch_features.to(self.device)
-                batch_targets = batch_targets.to(self.device).long()
-
-                #Mixup augmentation
-                if np.random.random() > 0.7:  # Apply mixup 30% of the time
-                    lam = np.random.beta(mixup_alpha, mixup_alpha)
-                    index = torch.randperm(batch_features.size(0)).to(self.device)
-                    mixed_features = lam * batch_features + (1 - lam) * batch_features[index, :]
-                    targets_a, targets_b = batch_targets, batch_targets[index]
-
-                    optimizer.zero_grad()
-                    outputs = self.model(mixed_features)
-                    loss = lam * criterion(outputs, targets_a) + (1 - lam) * criterion(outputs, targets_b)
-                    loss.backward()
-
-                    #Gradient
-                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
-                    optimizer.step()
-
-                    train_loss += loss.item()
-                    train_predictions.extend(torch.argmax(outputs, dim=1).cpu().numpy())
-                    train_targets.extend(targets_a.cpu().numpy())
-                else:
-                    optimizer.zero_grad()
-                    outputs = self.model(batch_features)
-                    loss = criterion(outputs, batch_targets)
-                    loss.backward()
-
-                    # Gradient clipping
-                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
-                    optimizer.step()
-
-                    train_loss += loss.item()
-                    train_predictions.extend(torch.argmax(outputs, dim=1).cpu().numpy())
-                    train_targets.extend(batch_targets.cpu().numpy())
-
-            #Validation phase
-            self.model.eval()
-            val_loss = 0.0
-            val_predictions = []
-            val_targets = []
-
-            with torch.no_grad():
-                for batch_features, batch_targets in val_loader:
-                    batch_features = batch_features.to(self.device)
-                    batch_targets = batch_targets.to(self.device).long()
-
-                    outputs = self.model(batch_features)
-                    loss = criterion(outputs, batch_targets)
-
-                    val_loss += loss.item()
-                    val_predictions.extend(torch.argmax(outputs, dim=1).cpu().numpy())
-                    val_targets.extend(batch_targets.cpu().numpy())
-
-            train_acc = accuracy_score(train_targets, train_predictions)
-            val_acc = accuracy_score(val_targets, val_predictions)
-
-            train_loss = train_loss / len(train_loader)
-            val_loss = val_loss / len(val_loader)
-
-            self.train_losses.append(train_loss)
-            self.val_losses.append(val_loss)
-            self.train_metrics.append(train_acc)
-            self.val_metrics.append(val_acc)
-            self.learning_rates.append(optimizer.param_groups[0]['lr'])
-
-            scheduler.step()
-
-            #Early stopping with improved criteria
-            if val_acc > best_val_acc:
-                best_val_acc = val_acc
-                patience_counter = 0
-                torch.save(self.model.state_dict(), 'best_classification_model.pth')
-            else:
-                patience_counter += 1
-
-            if patience_counter >= early_stop_patience:
-                print(f"Early stopping at epoch {epoch + 1}")
-                break
-
-            if epoch % 20 == 0:
-                print(f"Epoch {epoch + 1}: Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, "
-                      f"Train Acc: {train_acc:.4f}, Val Acc: {val_acc:.4f}, LR: {optimizer.param_groups[0]['lr']:.6f}")
-
-        print(f"Training completed. Best validation accuracy: {best_val_acc:.4f}")
-
-    def train_regression(self, train_loader, val_loader, epochs=150, lr=0.001, weight_decay=1e-4):
-
-        #Use Huber loss which is more robust to outliers
-        criterion = nn.HuberLoss(delta=1.0)
-
+        criterion = nn.CrossEntropyLoss(weight=class_weights, label_smoothing=0.1)
         optimizer = optim.AdamW(self.model.parameters(), lr=lr, weight_decay=weight_decay)
-        scheduler = CosineAnnealingLR(optimizer, T_max=epochs, eta_min=lr * 0.001)
-
-        best_val_loss = float('inf')
-        patience_counter = 0
-        early_stop_patience = 30
-
-        for epoch in tqdm(range(epochs), desc="Training Regression"):
-            # Training phase
+        scheduler = OneCycleLR(optimizer, max_lr=lr, steps_per_epoch=len(train_loader), epochs=epochs, pct_start=0.3)
+        early_stop_patience = 50
+        min_delta = 0.0005
+        best_val_acc = 0.0
+        for epoch in tqdm(range(epochs), desc="Training Classification"):
             self.model.train()
-            train_loss = 0.0
-            train_predictions = []
-            train_targets = []
-
+            train_loss, train_predictions, train_targets = 0.0, [], []
             for batch_features, batch_targets in train_loader:
-                batch_features = batch_features.to(self.device)
-                batch_targets = batch_targets.to(self.device)
-
+                batch_features, batch_targets = batch_features.to(self.device), batch_targets.to(self.device).long()
                 optimizer.zero_grad()
                 outputs = self.model(batch_features)
                 loss = criterion(outputs, batch_targets)
                 loss.backward()
-
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=2.0)
                 optimizer.step()
+                train_loss += loss.item()
+                train_predictions.extend(torch.argmax(outputs, dim=1).cpu().numpy())
+                train_targets.extend(batch_targets.cpu().numpy())
+                scheduler.step()
+            val_loss, val_predictions, val_targets = self._validate(val_loader, criterion)
+            train_acc = accuracy_score(train_targets, train_predictions)
+            val_acc = accuracy_score(val_targets, val_predictions)
+            self.train_losses.append(train_loss / len(train_loader))
+            self.val_losses.append(val_loss / len(val_loader))
+            self.train_metrics.append(train_acc)
+            self.val_metrics.append(val_acc)
+            self.learning_rates.append(optimizer.param_groups[0]['lr'])
+            if val_acc > best_val_acc + min_delta:
+                best_val_acc = val_acc
+                self.patience_counter = 0
+                torch.save(self.model.state_dict(), 'best_classification_model.pth')
+            else:
+                self.patience_counter += 1
+            if self.patience_counter >= early_stop_patience:
+                print(f"\nEarly stopping at epoch {epoch + 1} as validation accuracy did not improve by more than {min_delta} for {early_stop_patience} epochs.")
+                self.training_stopped_early = True
+                break
+            if epoch % 10 == 0 or epoch == epochs - 1:
+                print(f"Epoch {epoch + 1}/{epochs}: Train Loss: {self.train_losses[-1]:.4f}, Val Loss: {self.val_losses[-1]:.4f}, Train Acc: {train_acc:.4f}, Val Acc: {val_acc:.4f}")
+        print(f"Training completed. Best validation accuracy: {best_val_acc:.4f}")
 
+    def train_regression(self, train_loader, val_loader, epochs=200, lr=0.001, weight_decay=1e-4):
+        def combined_loss(pred, target):
+            return 0.7 * nn.MSELoss()(pred, target) + 0.3 * nn.L1Loss()(pred, target)
+        criterion = combined_loss
+        optimizer = optim.AdamW(self.model.parameters(), lr=lr, weight_decay=weight_decay, betas=(0.9, 0.999))
+        scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.7, patience=20, min_lr=1e-6, verbose=True)
+        best_val_loss = float('inf')
+        early_stop_patience = 60
+        min_delta = 0.001
+        for epoch in tqdm(range(epochs), desc="Training Regression"):
+            self.model.train()
+            train_loss, train_predictions, train_targets = 0.0, [], []
+            for batch_features, batch_targets in train_loader:
+                batch_features, batch_targets = batch_features.to(self.device), batch_targets.to(self.device)
+                optimizer.zero_grad()
+                outputs = self.model(batch_features)
+                loss = criterion(outputs, batch_targets)
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=2.0)
+                optimizer.step()
                 train_loss += loss.item()
                 train_predictions.extend(outputs.detach().cpu().numpy())
                 train_targets.extend(batch_targets.cpu().numpy())
-
-            #Validation phase
-            self.model.eval()
-            val_loss = 0.0
-            val_predictions = []
-            val_targets = []
-
-            with torch.no_grad():
-                for batch_features, batch_targets in val_loader:
-                    batch_features = batch_features.to(self.device)
-                    batch_targets = batch_targets.to(self.device)
-
-                    outputs = self.model(batch_features)
-                    loss = criterion(outputs, batch_targets)
-
-                    val_loss += loss.item()
-                    val_predictions.extend(outputs.cpu().numpy())
-                    val_targets.extend(batch_targets.cpu().numpy())
-
-            #Calculate metrics
-            train_rmse = np.sqrt(mean_squared_error(train_targets, train_predictions))
-            val_rmse = np.sqrt(mean_squared_error(val_targets, val_predictions))
+            val_loss, val_predictions, val_targets = self._validate_regression(val_loader, criterion)
             train_r2 = r2_score(train_targets, train_predictions)
             val_r2 = r2_score(val_targets, val_predictions)
-
-            train_loss = train_loss / len(train_loader)
-            val_loss = val_loss / len(val_loader)
-
-            self.train_losses.append(train_loss)
-            self.val_losses.append(val_loss)
+            self.train_losses.append(train_loss / len(train_loader))
+            self.val_losses.append(val_loss / len(val_loader))
             self.train_metrics.append(train_r2)
             self.val_metrics.append(val_r2)
             self.learning_rates.append(optimizer.param_groups[0]['lr'])
-
-            scheduler.step()
-
-            #Early stopping
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
-                patience_counter = 0
+            scheduler.step(self.val_losses[-1])
+            if self.val_losses[-1] < best_val_loss - min_delta:
+                best_val_loss = self.val_losses[-1]
+                self.patience_counter = 0
                 torch.save(self.model.state_dict(), 'best_regression_model.pth')
             else:
-                patience_counter += 1
-
-            if patience_counter >= early_stop_patience:
-                print(f"Early stopping at epoch {epoch + 1}")
+                self.patience_counter += 1
+            if self.patience_counter >= early_stop_patience:
+                print(f"\nEarly stopping at epoch {epoch + 1} as validation loss did not improve by more than {min_delta} for {early_stop_patience} epochs.")
+                self.training_stopped_early = True
                 break
-
-            if epoch % 20 == 0:
-                print(f"Epoch {epoch + 1}: Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, "
-                      f"Train RMSE: {train_rmse:.4f}, Val RMSE: {val_rmse:.4f}, "
-                      f"Train R²: {train_r2:.4f}, Val R²: {val_r2:.4f}")
-
+            if epoch % 10 == 0 or epoch == epochs - 1:
+                print(f"Epoch {epoch + 1}/{epochs}: Train Loss: {self.train_losses[-1]:.4f}, Val Loss: {self.val_losses[-1]:.4f}, Train R²: {train_r2:.4f}, Val R²: {val_r2:.4f}")
         print(f"Training completed. Best validation loss: {best_val_loss:.4f}")
+
+    def _validate(self, val_loader, criterion):
+        self.model.eval()
+        val_loss, val_predictions, val_targets = 0.0, [], []
+        with torch.no_grad():
+            for batch_features, batch_targets in val_loader:
+                batch_features, batch_targets = batch_features.to(self.device), batch_targets.to(self.device).long()
+                outputs = self.model(batch_features)
+                loss = criterion(outputs, batch_targets)
+                val_loss += loss.item()
+                val_predictions.extend(torch.argmax(outputs, dim=1).cpu().numpy())
+                val_targets.extend(batch_targets.cpu().numpy())
+        return val_loss, val_predictions, val_targets
+
+    def _validate_regression(self, val_loader, criterion):
+        self.model.eval()
+        val_loss, val_predictions, val_targets = 0.0, [], []
+        with torch.no_grad():
+            for batch_features, batch_targets in val_loader:
+                batch_features, batch_targets = batch_features.to(self.device), batch_targets.to(self.device)
+                outputs = self.model(batch_features)
+                loss = criterion(outputs, batch_targets)
+                val_loss += loss.item()
+                val_predictions.extend(outputs.cpu().numpy())
+                val_targets.extend(batch_targets.cpu().numpy())
+        return val_loss, val_predictions, val_targets
 
     def evaluate_classification(self, test_loader):
         self.model.eval()
-        test_predictions = []
-        test_targets = []
-        test_probabilities = []
-
+        test_predictions, test_targets, test_probabilities = [], [], []
         with torch.no_grad():
             for batch_features, batch_targets in test_loader:
-                batch_features = batch_features.to(self.device)
-                batch_targets = batch_targets.to(self.device).long()
-
+                batch_features, batch_targets = batch_features.to(self.device), batch_targets.to(self.device).long()
                 outputs = self.model(batch_features)
                 probabilities = torch.softmax(outputs, dim=1)
-
                 test_predictions.extend(torch.argmax(outputs, dim=1).cpu().numpy())
                 test_targets.extend(batch_targets.cpu().numpy())
                 test_probabilities.extend(probabilities.cpu().numpy())
-
-        #Calculate metrics
         accuracy = accuracy_score(test_targets, test_predictions)
         precision, recall, f1, _ = precision_recall_fscore_support(test_targets, test_predictions, average='macro')
-
-        #Per-class metrics
-        precision_per_class, recall_per_class, f1_per_class, _ = precision_recall_fscore_support(
-            test_targets, test_predictions, average=None
-        )
-
-        print(f"Test Results:")
+        precision_per_class, recall_per_class, f1_per_class, _ = precision_recall_fscore_support(test_targets, test_predictions, average=None)
+        print("\n🎯 Classification Test Results:")
         print(f"Overall Accuracy: {accuracy:.4f}")
         print(f"Macro Precision: {precision:.4f}")
         print(f"Macro Recall: {recall:.4f}")
         print(f"Macro F1-Score: {f1:.4f}")
-
-        print(f"\nPer-class Performance:")
+        print("\nPer-class Performance:")
         class_names = ['Pending', 'In Progress', 'Completed']
         for i, class_name in enumerate(class_names):
-            print(f"{class_name}: Precision={precision_per_class[i]:.4f}, "
-                  f"Recall={recall_per_class[i]:.4f}, F1={f1_per_class[i]:.4f}")
-
-        return {
-            'accuracy': accuracy,
-            'precision': precision,
-            'recall': recall,
-            'f1': f1,
-            'per_class_precision': precision_per_class,
-            'per_class_recall': recall_per_class,
-            'per_class_f1': f1_per_class,
-            'predictions': test_predictions,
-            'targets': test_targets,
-            'probabilities': test_probabilities
-        }
+            if i < len(precision_per_class):
+                print(f"{class_name}: Precision={precision_per_class[i]:.4f}, Recall={recall_per_class[i]:.4f}, F1={f1_per_class[i]:.4f}")
+        return {'accuracy': accuracy, 'precision': precision, 'recall': recall, 'f1': f1, 'per_class_precision': precision_per_class, 'per_class_recall': recall_per_class, 'per_class_f1': f1_per_class, 'predictions': test_predictions, 'targets': test_targets, 'probabilities': test_probabilities, 'stopped_early': self.training_stopped_early}
 
     def evaluate_regression(self, test_loader):
         self.model.eval()
-        test_predictions = []
-        test_targets = []
-        test_loss = 0.0
-        criterion = nn.HuberLoss(delta=1.0)
-
+        test_predictions, test_targets = [], []
         with torch.no_grad():
             for batch_features, batch_targets in test_loader:
-                batch_features = batch_features.to(self.device)
-                batch_targets = batch_targets.to(self.device)
-
+                batch_features, batch_targets = batch_features.to(self.device), batch_targets.to(self.device)
                 outputs = self.model(batch_features)
-                loss = criterion(outputs, batch_targets)
-                test_loss += loss.item()
-
                 test_predictions.extend(outputs.cpu().numpy())
                 test_targets.extend(batch_targets.cpu().numpy())
-
-        #Calculate comprehensive regression metrics
+        test_predictions = np.array(test_predictions)
+        test_targets = np.array(test_targets)
         mse = mean_squared_error(test_targets, test_predictions)
         rmse = np.sqrt(mse)
         mae = mean_absolute_error(test_targets, test_predictions)
         r2 = r2_score(test_targets, test_predictions)
-
-        print(f"\nEnhanced Regression Test Results:")
-        print(f"RMSE: {rmse:.4f}")
+        mape = np.mean(np.abs((test_targets - test_predictions) / (test_targets + 1e-8))) * 100
+        print("\n📈 Regression Test Results:")
+        print(f"RMSE: {rmse:.4f} days")
         print(f"MSE: {mse:.4f}")
-        print(f"MAE: {mae:.4f}")
+        print(f"MAE: {mae:.4f} days")
         print(f"R²: {r2:.4f}")
-
-        return {
-            'rmse': rmse,
-            'mse': mse,
-            'mae': mae,
-            'r2': r2,
-            'predictions': test_predictions,
-            'targets': test_targets,
-            'loss': test_loss / len(test_loader)
-        }
+        print(f"MAPE: {mape:.2f}%")
+        return {'rmse': rmse, 'mse': mse, 'mae': mae, 'r2': r2, 'mape': mape, 'predictions': test_predictions, 'targets': test_targets, 'stopped_early': self.training_stopped_early}
 
     def plot_enhanced_training_history(self):
-        fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-
-        #Loss plot
-        axes[0, 0].plot(self.train_losses, label='Training Loss', alpha=0.8)
-        axes[0, 0].plot(self.val_losses, label='Validation Loss', alpha=0.8)
-        axes[0, 0].set_title('Training and Validation Loss')
+        fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+        if len(self.train_losses) > 10:
+            window = min(10, len(self.train_losses) // 20 + 1)
+            train_smooth = pd.Series(self.train_losses).rolling(window=window, center=True).mean()
+            val_smooth = pd.Series(self.val_losses).rolling(window=window, center=True).mean()
+            axes[0, 0].plot(self.train_losses, alpha=0.3, color='blue', label='Training Loss (raw)')
+            axes[0, 0].plot(train_smooth, color='blue', linewidth=2, label='Training Loss (smooth)')
+            axes[0, 0].plot(self.val_losses, alpha=0.3, color='orange', label='Validation Loss (raw)')
+            axes[0, 0].plot(val_smooth, color='orange', linewidth=2, label='Validation Loss (smooth)')
+        else:
+            axes[0, 0].plot(self.train_losses, label='Training Loss')
+            axes[0, 0].plot(self.val_losses, label='Validation Loss')
+        axes[0, 0].set_title('Training and Validation Loss', fontsize=14, fontweight='bold')
         axes[0, 0].set_xlabel('Epoch')
         axes[0, 0].set_ylabel('Loss')
         axes[0, 0].legend()
         axes[0, 0].grid(True, alpha=0.3)
-
-        #Metrics plot
+        if self.training_stopped_early:
+            axes[0, 0].axvline(x=len(self.train_losses) - 1, color='red', linestyle='--', label=f'Early Stop (epoch {len(self.train_losses)})')
+            axes[0, 0].legend()
         if len(self.train_metrics) > 0:
-            axes[0, 1].plot(self.train_metrics, label='Training Metric', alpha=0.8)
-            axes[0, 1].plot(self.val_metrics, label='Validation Metric', alpha=0.8)
-            axes[0, 1].set_title('Training and Validation Metrics')
+            axes[0, 1].plot(self.train_metrics, label='Training Metric', linewidth=2)
+            axes[0, 1].plot(self.val_metrics, label='Validation Metric', linewidth=2)
+            axes[0, 1].set_title('Training and Validation Metrics', fontsize=14, fontweight='bold')
             axes[0, 1].set_xlabel('Epoch')
             axes[0, 1].set_ylabel('Metric')
             axes[0, 1].legend()
             axes[0, 1].grid(True, alpha=0.3)
-
-        #Learning rate plot
         if len(self.learning_rates) > 0:
-            axes[1, 0].plot(self.learning_rates, label='Learning Rate', color='red', alpha=0.8)
-            axes[1, 0].set_title('Learning Rate Schedule')
-            axes[1, 0].set_xlabel('Epoch')
+            axes[1, 0].plot(self.learning_rates, color='red', linewidth=2, label='Learning Rate')
+            axes[1, 0].set_title('Learning Rate Schedule', fontsize=14, fontweight='bold')
+            axes[1, 0].set_xlabel('Step')
             axes[1, 0].set_ylabel('Learning Rate')
             axes[1, 0].legend()
             axes[1, 0].grid(True, alpha=0.3)
-
-        #Loss difference plot
         if len(self.train_losses) > 0 and len(self.val_losses) > 0:
-            loss_diff = [abs(t - v) for t, v in zip(self.train_losses, self.val_losses)]
-            axes[1, 1].plot(loss_diff, label='|Train Loss - Val Loss|', color='purple', alpha=0.8)
-            axes[1, 1].set_title('Training-Validation Loss Difference')
+            generalization_gap = [abs(t - v) for t, v in zip(self.train_losses, self.val_losses)]
+            axes[1, 1].plot(generalization_gap, color='purple', linewidth=2, label='Generalization Gap')
+            axes[1, 1].set_title('Generalization Gap Analysis', fontsize=14, fontweight='bold')
             axes[1, 1].set_xlabel('Epoch')
-            axes[1, 1].set_ylabel('Absolute Difference')
+            axes[1, 1].set_ylabel('|Train Loss - Val Loss|')
             axes[1, 1].legend()
             axes[1, 1].grid(True, alpha=0.3)
-
+            if len(generalization_gap) > 10:
+                z = np.polyfit(range(len(generalization_gap)), generalization_gap, 1)
+                p = np.poly1d(z)
+                axes[1, 1].plot(range(len(generalization_gap)), p(range(len(generalization_gap))), "--", alpha=0.8, color='red', label='Trend')
+                axes[1, 1].legend()
         plt.tight_layout()
+        plt.suptitle('Training Analysis Dashboard', fontsize=16, fontweight='bold', y=1.02)
         plt.show()
 
     def predict(self, features, return_confidence=False):
-        #Confidence scores prediction
         self.model.eval()
         with torch.no_grad():
             features = torch.FloatTensor(features).to(self.device)
             if len(features.shape) == 1:
                 features = features.unsqueeze(0)
-
             outputs = self.model(features)
-
             if hasattr(self.model, 'num_classes'):
-                #Classification
                 predictions = torch.argmax(outputs, dim=1)
                 probabilities = torch.softmax(outputs, dim=1)
-
                 if return_confidence:
-                    #Calculate confidence as max probability
-                    confidence = torch.max(probabilities, dim=1)[0]
-                    return predictions.cpu().numpy(), probabilities.cpu().numpy(), confidence.cpu().numpy()
+                    max_probs = torch.max(probabilities, dim=1)[0]
+                    entropy = -torch.sum(probabilities * torch.log(probabilities + 1e-8), dim=1)
+                    normalized_entropy = entropy / math.log(probabilities.shape[1])
+                    confidence = max_probs * (1 - normalized_entropy)
+                    return (predictions.cpu().numpy(), probabilities.cpu().numpy(), confidence.cpu().numpy())
                 else:
                     return predictions.cpu().numpy(), probabilities.cpu().numpy()
             else:
-                # Regression
-                return outputs.cpu().numpy()
-
-
+                numpy_outputs = outputs.cpu().numpy()
+                return np.atleast_1d(numpy_outputs)
 
 class TaskModelFactory:
-
     @staticmethod
-    def create_classifier(input_size, num_classes=3, hidden_sizes=[256, 128, 64], dropout_rate=0.4):
-        """Create the task status classifier"""
+    def create_classifier(input_size, num_classes=3, hidden_sizes=None, dropout_rate=0.4):
+        if hidden_sizes is None:
+            hidden_sizes = [256, 128]
         return TaskStatusClassifier(input_size, hidden_sizes, num_classes, dropout_rate)
 
     @staticmethod
-    def create_regressor(input_size, hidden_sizes=[256, 128, 64], dropout_rate=0.3):
-        """Create the completion time regressor"""
+    def create_regressor(input_size, hidden_sizes=None, dropout_rate=0.25):
+        if hidden_sizes is None:
+            if input_size <= 50:
+                hidden_sizes = [256, 128, 64]
+            elif input_size <= 100:
+                hidden_sizes = [512, 256, 128]
+            else:
+                hidden_sizes = [1024, 512, 256]
         return TaskCompletionRegressor(input_size, hidden_sizes, dropout_rate)
 
     @staticmethod
     def create_trainer(model, device='cpu', class_weights=None):
-        """Create the model trainer"""
         return TaskModelTrainer(model, device, class_weights)
-
