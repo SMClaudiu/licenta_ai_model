@@ -1,45 +1,33 @@
-FROM nvidia/cuda:12.1.0-base-ubuntu22.04
-LABEL authors="Claudiu"
+# Stage 1: Base Image
+# Use an official lightweight Python image. 'slim' is a good balance of size and functionality.
+# Using a specific version like 3.11 is recommended for reproducibility.
+FROM python:3.11-slim-bookworm
 
+# Set up the working directory in the container
 WORKDIR /app
 
-# Install Python and system dependencies
-RUN apt-get update && apt-get install -y \
-    python3.9 \
-    python3.9-pip \
-    python3.9-dev \
-    gcc \
-    g++ \
+# Set environment variables to prevent Python from writing .pyc files and to buffer output
+ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONUNBUFFERED 1
+
+# Install system dependencies (curl is needed for the healthcheck)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Create symbolic link for python
-RUN ln -s /usr/bin/python3.9 /usr/bin/python
-
-# Upgrade pip
-RUN python -m pip install --upgrade pip
-
-# Copy requirements first for better caching
+# Copy the requirements file first to leverage Docker's build cache
 COPY requirements.txt .
+
+# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy model files and source code
-COPY *.pkl ./
-COPY *.pth ./
-COPY src/ ./src/
-COPY api_service.py .
-COPY task_advice_generator.py .
-COPY model_loader.py .
+# Copy the application source code and artifacts into the container
+COPY ./src ./src
+COPY ./artifacts ./artifacts
 
-# Set Python path
-ENV PYTHONPATH=/app:$PYTHONPATH
-
-# Expose port
+# Expose the port the app runs on
 EXPOSE 5000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:5000/health || exit 1
-
-# Start the API service
-CMD ["python", "api_service.py"]
+# Define the command to run the application using Gunicorn
+# The PYTHONPATH ensures that Python can find modules inside the 'src' directory
+CMD ["env", "PYTHONPATH=/app", "gunicorn", "--bind", "0.0.0.0:5000", "--workers", "3", "src.api.app:app"]

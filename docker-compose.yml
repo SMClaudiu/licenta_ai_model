@@ -13,20 +13,15 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=101102
       - PYTHONUNBUFFERED=1
-      - CUDA_VISIBLE_DEVICES=0
+      # The CUDA_VISIBLE_DEVICES variable is removed as it's irrelevant for CPU
     volumes:
-      - .:/app
-      - model-data:/app/models
-    deploy:
-      resources:
-        limits:
-          cpus: '2'
-          memory: 4G
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+      # This volume is for development (live code reload). Remove for production.
+      - ./src:/app/src
+      # This volume correctly persists your trained model artifacts
+      - model-data:/app/artifacts
+
+    # The ENTIRE 'deploy' section is REMOVED because it contains GPU-specific resource reservations.
+
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 30s

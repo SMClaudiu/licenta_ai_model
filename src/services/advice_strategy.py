@@ -15,6 +15,8 @@ class BaseAdviceStrategy:
 
     def _generate_recommendations(self , context: Dict , prediction: Dict) -> List[str]:
         recs = ["Review and clarify the task's objectives and success criteria before starting."]
+        print(prediction.get('duration_prediction'))
+
         if prediction.get('duration_prediction' , 0) > 30:
             recs.append("For long-duration tasks, break down the work into clear milestones.")
         return recs
