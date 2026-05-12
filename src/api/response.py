@@ -1,1 +1,0 @@
-#TODO the structure of the response api
